@@ -16,3 +16,17 @@
 # Add a feed source
 #echo 'src-git helloworld https://github.com/fw876/helloworld' >>feeds.conf.default
 #echo 'src-git passwall https://github.com/xiaorouji/openwrt-passwall' >>feeds.conf.default
+# ===================== 第三方插件统一拉取（先删旧残留） =====================
+rm -rf package/OpenAppFilter
+git clone --depth 1 -b v6.1.8 https://github.com/destan19/OpenAppFilter package/OpenAppFilter
+
+rm -rf package/luci-app-store
+git clone --depth=1 https://github.com/linkease/istore.git package/luci-app-store
+
+rm -rf package/luci-app-gecoosac
+git clone --depth=1 https://github.com/laipeng668/luci-app-gecoosac package/luci-app-gecoosac
+
+rm -rf tmp/openwrt-app-actions package/luci-app-wan-mac
+git clone --depth=1 https://github.com/linkease/openwrt-app-actions tmp/openwrt-app-actions
+mv tmp/openwrt-app-actions/applications/luci-app-wan-mac package/luci-app-wan-mac
+rm -rf tmp/openwrt-app-actions
