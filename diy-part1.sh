@@ -3,24 +3,11 @@
 # https://github.com/P3TERX/Actions-OpenWrt
 # File name: diy-part1.sh
 # Description: OpenWrt DIY script part 1 (Before Update feeds)
-#!/bin/bash
-SRC_FILES="$GITHUB_WORKSPACE/MT7981-eMMC-USB-hanwckf/files"
-DST_FILES="$GITHUB_WORKSPACE/openwrt/files"
-
-echo "源目录: $SRC_FILES"
-if [ ! -d "$SRC_FILES" ];then
-    echo " 源文件夹不存在"
-    exit 1
+# 加载files自定义配置文件
+if [ -d "$GITHUB_WORKSPACE/files" ]; then
+    cp -r $GITHUB_WORKSPACE/files openwrt/
 fi
 
-mkdir -p "$DST_FILES"
-cp -r "$SRC_FILES"/* "$DST_FILES"/
-echo " 文件复制完成"
-
-chmod +x "$DST_FILES/etc/zerotier.start"
-chmod +x "$DST_FILES/etc/zerotier.stop"
-chmod +x "$DST_FILES/etc/zerotier.reload"
-echo " Zerotier脚本授权完毕"
 # Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
 #
 # This is free software, licensed under the MIT License.
