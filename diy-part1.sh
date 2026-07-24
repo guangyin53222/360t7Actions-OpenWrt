@@ -4,9 +4,9 @@
 # File name: diy-part1.sh
 # Description: OpenWrt DIY script part 1 (Before Update feeds)
 # 加载files自定义配置文件
-if [ -d "$GITHUB_WORKSPACE/files" ]; then
-    cp -r $GITHUB_WORKSPACE/files openwrt/
-fi
+#if [ -d "$GITHUB_WORKSPACE/files" ]; then
+#    cp -r $GITHUB_WORKSPACE/files openwrt/
+#fi
 
 # Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
 #
