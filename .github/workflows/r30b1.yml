@@ -2,7 +2,7 @@
 # Modified for chasey-dev/immortalwrt-mt798x-rebase
 # Base on P3TERX Actions-OpenWrt template
 #
-name: OpenWrt Builder
+name: r30b1
 
 on:
   repository_dispatch:
