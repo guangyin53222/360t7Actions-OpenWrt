@@ -1,18 +1,13 @@
-#
 # Modified for chasey-dev/immortalwrt-mt798x-rebase
 # Base on P3TERX Actions-OpenWrt template
-#
 name: OpenWrt Builder
-
 on:
   repository_dispatch:
   workflow_dispatch:
-
 env:
-  # ========== 核心源码修改处 ==========
+  # ========== 核心源码地址（你自己的fork仓库，不用改）
   REPO_URL: https://github.com/guangyin53222/immortalwrt-mt798x-rebase
   REPO_BRANCH: 25.12
-  # ===================================
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: xr30-emmc.config
   DIY_P1_SH: diy-part1.sh
@@ -21,11 +16,9 @@ env:
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: false
   TZ: Asia/Shanghai
-
 jobs:
   build:
     runs-on: ubuntu-22.04
-
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -44,11 +37,13 @@ jobs:
         sudo mkdir -p /workdir
         sudo chown $USER:$GROUPS /workdir
 
-    - name: Clone source code
+    - name: Clone source code & pull latest commit
       working-directory: /workdir
       run: |
         df -hT $PWD
         git clone $REPO_URL -b $REPO_BRANCH openwrt
+        cd openwrt
+        git pull origin $REPO_BRANCH
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: Load custom feeds
@@ -64,19 +59,23 @@ jobs:
     - name: Install feeds
       run: cd openwrt && ./scripts/feeds install -a
 
-    - name: Load custom configuration
+    - name: Load config & clean nand device entries
       run: |
         [ -e files ] && mv files openwrt/files
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
         chmod +x $DIY_P2_SH
         cd openwrt
+        # 自动删除所有rax3000m-nand相关编译选项，防止编译不存在设备
+        sed -i '/DEVICE_cmcc_rax3000m-nand/d' .config
+        sed -i '/DEVICE_cmcc_rax3000m-256m-nand/d' .config
         $GITHUB_WORKSPACE/$DIY_P2_SH
+        make defconfig
+        rm -rf tmp build_dir staging_dir
 
     - name: Download package
       id: package
       run: |
         cd openwrt
-        make defconfig
         make download -j8
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
@@ -100,7 +99,7 @@ jobs:
       uses: actions/upload-artifact@v4
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
-        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        name: OpenWrt_bin${{ env.DEVICE_NAME }}
         path: openwrt/bin
 
     - name: Organize files
@@ -146,8 +145,8 @@ jobs:
     - name: Remove old Releases
       uses: dev-drprasad/delete-older-releases@v0.2.0
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         keep_latest: 3
         delete_tags: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
