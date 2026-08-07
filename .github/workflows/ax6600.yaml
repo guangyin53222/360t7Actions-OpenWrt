@@ -3,36 +3,14 @@ name: Build OpenWrt for JDCloud RE-CS-02
 on:
   workflow_dispatch:
     inputs:
-      owner:
-        description: '源码拥有者'
-        default: 'qosmio'
-        required: true
-      repo:
-        description: '源码仓库'
-        default: 'openwrt-ipq'
-        required: true
-      branch:
-        description: '源码分支'
-        default: 'main-nss'
-        required: true
-      multithreading:
-        description: '启用多线程编译'
-        default: 'true'
-        required: false
-      isFiles:
-        description: '使用 files 大法'
-        default: 'false'
-        required: false
-      # 👇 新增：SSH 开关（默认开启）
       ssh:
         description: 'SSH 连接编译环境（用于 make menuconfig）'
         default: 'true'
         required: false
 
 env:
-  REPO_URL: https://github.com/${{ github.event.inputs.owner }}/${{ github.event.inputs.repo }}
-  REPO_BRANCH: ${{ github.event.inputs.branch }}
-  WORKDIR: /workdir
+  REPO_URL: https://github.com/qosmio/openwrt-ipq
+  REPO_BRANCH: main-nss
   TZ: Asia/Shanghai
 
 jobs:
@@ -42,13 +20,18 @@ jobs:
       - name: Checkout current repo
         uses: actions/checkout@v4
 
-      - name: Free disk space
+      # ✅ 关键修复 1：强制清盘（解决 No space left on device）
+      - name: Free up disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /opt/microsoft /opt/pipx \
+            /usr/share/swift /usr/local/share/boost
           sudo apt-get clean
+          docker image prune -af
           df -h
 
-      - name: Install build dependencies + Rust (for athena-led)
+      # ✅ 关键修复 2：不再用 /workdir，直接在默认目录操作
+      - name: Install build dependencies + Rust
         run: |
           sudo apt-get update -y
           sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils \
@@ -56,48 +39,45 @@ jobs:
             flex gawk gettext gcc-multilib g++-multilib git gperf intltool libelf-dev \
             libncurses5-dev libssl-dev libtool lrzsz python3 python3-pip rsync scons \
             squashfs-tools subversion swig texinfo unzip vim wget xmlto zlib1g-dev
-          # Rust toolchain for athena-led
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
+      # ✅ 关键修复 3：直接 clone，不创建软链接（解决 No such file or directory）
       - name: Clone source code
         run: |
-          git clone $REPO_URL -b $REPO_BRANCH openwrt
-          ln -sf $(pwd)/openwrt $WORKDIR/openwrt
+          git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
 
-      - name: Copy custom config / diy scripts
+      - name: Copy config & scripts
         run: |
           cp .config openwrt/.config
-          cp diy-part1.sh openwrt/diy-part1.sh
-          cp diy-part2.sh openwrt/diy-part2.sh
+          cp diy-part1.sh openwrt/
+          cp diy-part2.sh openwrt/
           chmod +x openwrt/diy-part1.sh openwrt/diy-part2.sh
 
-      - name: Run diy-part1.sh (clone extra packages)
+      - name: Run diy-part1.sh
         working-directory: openwrt
         run: ./diy-part1.sh
 
-      - name: Run diy-part2.sh (select device & packages)
+      - name: Run diy-part2.sh
         working-directory: openwrt
         run: ./diy-part2.sh
 
-      # 👇 SSH 入口（diy 之后，download 之前）
+      # ✅ SSH 入口（完美时机：diy 后，download 前）
       - name: SSH connection to Actions
         if: ${{ github.event.inputs.ssh == 'true' }}
         uses: mxschmitt/action-tmate@v3
 
+      # ✅ 限制下载深度，减少磁盘占用
       - name: Download package
         working-directory: openwrt
         run: |
-          make download -j8 || make download -j1
+          make download -j$(nproc) IGNORE_ERRORS=1
 
+      # ✅ 单线程编译，避免内存/磁盘尖峰
       - name: Build firmware
         working-directory: openwrt
         run: |
-          if [ "${{ github.event.inputs.multithreading }}" = "true" ]; then
-            make -j$(nproc) V=s
-          else
-            make -j1 V=s
-          fi
+          make -j1 V=s
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
