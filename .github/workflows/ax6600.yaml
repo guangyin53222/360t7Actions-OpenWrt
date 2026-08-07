@@ -1,0 +1,106 @@
+name: Build OpenWrt for JDCloud RE-CS-02
+
+on:
+  workflow_dispatch:
+    inputs:
+      owner:
+        description: '源码拥有者'
+        default: 'qosmio'
+        required: true
+      repo:
+        description: '源码仓库'
+        default: 'openwrt-ipq'
+        required: true
+      branch:
+        description: '源码分支'
+        default: 'main-nss'
+        required: true
+      multithreading:
+        description: '启用多线程编译'
+        default: 'true'
+        required: false
+      isFiles:
+        description: '使用 files 大法'
+        default: 'false'
+        required: false
+      # 👇 新增：SSH 开关（默认开启）
+      ssh:
+        description: 'SSH 连接编译环境（用于 make menuconfig）'
+        default: 'true'
+        required: false
+
+env:
+  REPO_URL: https://github.com/${{ github.event.inputs.owner }}/${{ github.event.inputs.repo }}
+  REPO_BRANCH: ${{ github.event.inputs.branch }}
+  WORKDIR: /workdir
+  TZ: Asia/Shanghai
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout current repo
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
+          df -h
+
+      - name: Install build dependencies + Rust (for athena-led)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ack antlr3 asciidoc autoconf automake autopoint binutils \
+            bison build-essential bzip2 ccache cmake cpio curl device-tree-compiler fastjar \
+            flex gawk gettext gcc-multilib g++-multilib git gperf intltool libelf-dev \
+            libncurses5-dev libssl-dev libtool lrzsz python3 python3-pip rsync scons \
+            squashfs-tools subversion swig texinfo unzip vim wget xmlto zlib1g-dev
+          # Rust toolchain for athena-led
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Clone source code
+        run: |
+          git clone $REPO_URL -b $REPO_BRANCH openwrt
+          ln -sf $(pwd)/openwrt $WORKDIR/openwrt
+
+      - name: Copy custom config / diy scripts
+        run: |
+          cp .config openwrt/.config
+          cp diy-part1.sh openwrt/diy-part1.sh
+          cp diy-part2.sh openwrt/diy-part2.sh
+          chmod +x openwrt/diy-part1.sh openwrt/diy-part2.sh
+
+      - name: Run diy-part1.sh (clone extra packages)
+        working-directory: openwrt
+        run: ./diy-part1.sh
+
+      - name: Run diy-part2.sh (select device & packages)
+        working-directory: openwrt
+        run: ./diy-part2.sh
+
+      # 👇 SSH 入口（diy 之后，download 之前）
+      - name: SSH connection to Actions
+        if: ${{ github.event.inputs.ssh == 'true' }}
+        uses: mxschmitt/action-tmate@v3
+
+      - name: Download package
+        working-directory: openwrt
+        run: |
+          make download -j8 || make download -j1
+
+      - name: Build firmware
+        working-directory: openwrt
+        run: |
+          if [ "${{ github.event.inputs.multithreading }}" = "true" ]; then
+            make -j$(nproc) V=s
+          else
+            make -j1 V=s
+          fi
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenWrt_RE-CS-02_NSS
+          path: openwrt/bin/targets/qualcommax/ipq60xx/*.bin
